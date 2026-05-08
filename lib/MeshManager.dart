@@ -10,6 +10,10 @@ class MeshManager {
   final Nearby _nearby;
   final Strategy _strategy;
 
+  /// Starts both advertising and discovery using the P2P cluster strategy.
+  ///
+  /// Provide callbacks for connection lifecycle events and endpoint discovery
+  /// to manage mesh participation and peer interactions.
   Future<void> startMesh({
     required String userName,
     String serviceId = 'com.example.bluetooth_based_communication_network',
