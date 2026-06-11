@@ -69,6 +69,8 @@ To actually test the mesh networking capabilities, **you must install the app on
 
 ## 🏗️ Architecture & Tech Stack
 
+![Dual Transport Architecture](meshchat_dual_transport_architecture.svg)
+
 MeshChat adheres to strict **Clean Architecture** principles and uses modern Android development standards. The project is modularized into several layers:
 
 *   **`app` (Presentation):** Contains the Jetpack Compose UI, ViewModels, and navigation logic.
@@ -89,6 +91,8 @@ MeshChat adheres to strict **Clean Architecture** principles and uses modern And
 ---
 
 ## 🛠️ Concurrency & Resilience
+
+![Concurrency Risks](meshchat_concurrency_risks.svg)
 
 The mesh network relies heavily on asynchronous operations. MeshChat incorporates hardened concurrency patterns to prevent deadlocks and network blockages:
 *   **Parallel Fan-Outs:** Broadcasts and packet forwarding are fanned out asynchronously with strict coroutine timeouts (`withTimeout`), ensuring that a slow or disconnected peer cannot bottleneck the rest of the network.
