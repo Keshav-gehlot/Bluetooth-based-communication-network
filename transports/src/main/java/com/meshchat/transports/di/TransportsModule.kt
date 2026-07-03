@@ -2,7 +2,7 @@ package com.meshchat.transports.di
 
 import com.meshchat.core.PresenceManager
 import com.meshchat.core.TransportAdapter
-import com.meshchat.transports.NearbyConnectionsTransport
+import com.meshchat.transports.DualTransportManager
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -17,7 +17,7 @@ abstract class TransportsModule {
     @Binds
     @Singleton
     abstract fun bindTransportAdapter(
-        impl: NearbyConnectionsTransport
+        impl: DualTransportManager
     ): TransportAdapter
 }
 
@@ -31,3 +31,4 @@ object PresenceModule {
         return PresenceManager()
     }
 }
+

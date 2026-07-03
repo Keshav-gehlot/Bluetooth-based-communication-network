@@ -33,6 +33,9 @@ import com.meshchat.domain.usecase.messaging.ObserveConversationsUseCase
 import com.meshchat.domain.usecase.messaging.SendBroadcastUseCase
 import com.meshchat.domain.usecase.messaging.SendMessageUseCase
 import com.meshchat.domain.usecase.peers.ObservePeersUseCase
+import com.meshchat.data.repository.UsernameClaimBridgeImpl
+import com.meshchat.core.UsernameClaimBridge
+import com.meshchat.core.UsernameClaimProtocol
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -44,6 +47,12 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
+
+    @Binds
+    @Singleton
+    abstract fun bindUsernameClaimBridge(
+        impl: UsernameClaimBridgeImpl
+    ): UsernameClaimBridge
 
     @Binds
     @Singleton
@@ -113,6 +122,14 @@ object SecurityModule {
         keyManager: KeyManager
     ): RoomCodeManager {
         return RoomCodeManager(context, keyManager)
+    }
+
+    @Provides
+    @Singleton
+    fun provideUsernameClaimProtocol(
+        bridge: UsernameClaimBridge
+    ): UsernameClaimProtocol {
+        return UsernameClaimProtocol(bridge)
     }
 }
 

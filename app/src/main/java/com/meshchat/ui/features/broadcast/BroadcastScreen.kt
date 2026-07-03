@@ -62,6 +62,16 @@ import com.meshchat.ui.components.EmptyState
 import com.meshchat.ui.components.ErrorState
 import com.meshchat.ui.components.LoadingState
 import com.meshchat.ui.core.ScreenUiState
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.Mic
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -76,6 +86,17 @@ fun BroadcastScreen(
     val listState = rememberLazyListState()
     var showInfoBanner by rememberSaveable { mutableStateOf(true) }
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val context = LocalContext.current
+    val recordAudioPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            android.widget.Toast.makeText(context, "Microphone permission granted! Hold to talk.", android.widget.Toast.LENGTH_SHORT).show()
+        } else {
+            android.widget.Toast.makeText(context, "Microphone permission is required for PTT", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.sendError.collect { errorMessage ->
@@ -135,32 +156,186 @@ fun BroadcastScreen(
             )
         },
         bottomBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = inputText,
-                    onValueChange = { inputText = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Send to everyone...") },
-                    maxLines = 4
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                IconButton(
-                    onClick = {
-                        if (inputText.isNotBlank()) {
-                            viewModel.sendBroadcast(inputText)
-                            inputText = ""
+            val voiceSession by viewModel.voiceSession.collectAsStateWithLifecycle()
+            val isChannelBusy by viewModel.isChannelBusy.collectAsStateWithLifecycle()
+            val context = LocalContext.current
+
+            Column {
+                // Voice PTT Active Overlay
+                val voiceSessionState = voiceSession?.state
+                if (voiceSessionState is com.meshchat.domain.model.VoiceSessionState.Transmitting ||
+                    voiceSessionState is com.meshchat.domain.model.VoiceSessionState.Receiving) {
+                    
+                    val isOutgoing = voiceSessionState is com.meshchat.domain.model.VoiceSessionState.Transmitting
+                    val barColor = if (isOutgoing) MaterialTheme.colorScheme.errorContainer else Color(0xFFE8F5E9)
+                    val barTextColor = if (isOutgoing) MaterialTheme.colorScheme.onErrorContainer else Color(0xFF2E7D32)
+                    val dotColor = if (isOutgoing) Color.Red else Color.Green
+                    
+                    // Pulsing animation for the dot
+                    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+                    val alpha by infiniteTransition.animateFloat(
+                        initialValue = 0.3f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1000, easing = LinearEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "alpha"
+                    )
+
+                    // Timer calculation
+                    var seconds by remember { mutableStateOf(0) }
+                    LaunchedEffect(voiceSessionState) {
+                        seconds = 0
+                        while (isActive) {
+                            delay(1000)
+                            seconds++
                         }
-                    },
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(barColor)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .clip(CircleShape)
+                                    .background(dotColor.copy(alpha = alpha))
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (isOutgoing) "TRANSMITTING BROADCAST" else "${voiceSession?.senderUsername ?: "Peer"} speaking...",
+                                color = barTextColor,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Animate 8 random waveform bars
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            repeat(8) { i ->
+                                var barHeight by remember { mutableStateOf(10f) }
+                                LaunchedEffect(voiceSessionState) {
+                                    while (isActive) {
+                                        barHeight = (5..35).random().toFloat()
+                                        delay((50..150).random().toLong())
+                                    }
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .width(3.dp)
+                                        .height(barHeight.dp)
+                                        .background(barTextColor.copy(alpha = 0.8f))
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = String.format("%02d:%02d", seconds / 60, seconds % 60),
+                            color = barTextColor,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Row(
                     modifier = Modifier
-                        .minimumInteractiveComponentSize()
-                        .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Filled.CellTower, contentDescription = "Broadcast to all", tint = MaterialTheme.colorScheme.onPrimary)
+                    OutlinedTextField(
+                        value = inputText,
+                        onValueChange = { inputText = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Send to everyone...") },
+                        maxLines = 4
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    if (inputText.isBlank()) {
+                        // Mic (PTT) Button when input text is empty
+                        var isPressing by remember { mutableStateOf(false) }
+                        val isReceiving = voiceSessionState is com.meshchat.domain.model.VoiceSessionState.Receiving
+                        IconButton(
+                            onClick = {
+                                if (isReceiving) {
+                                    android.widget.Toast.makeText(context, "Channel busy", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    android.widget.Toast.makeText(context, "Hold to talk", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            enabled = !isReceiving,
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .background(
+                                    if (isPressing) MaterialTheme.colorScheme.errorContainer 
+                                    else if (isReceiving) MaterialTheme.colorScheme.surfaceVariant 
+                                    else MaterialTheme.colorScheme.primaryContainer,
+                                    CircleShape
+                                )
+                                .then(
+                                    if (!isReceiving) {
+                                        Modifier.pointerInput(Unit) {
+                                            detectTapGestures(
+                                                onLongPress = {
+                                                    if (androidx.core.content.ContextCompat.checkSelfPermission(
+                                                            context,
+                                                            android.Manifest.permission.RECORD_AUDIO
+                                                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                                    ) {
+                                                        isPressing = true
+                                                        viewModel.onPttDown()
+                                                    } else {
+                                                        recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                                    }
+                                                },
+                                                onPress = {
+                                                    try {
+                                                        awaitRelease()
+                                                    } finally {
+                                                        if (isPressing) {
+                                                            isPressing = false
+                                                            viewModel.onPttUp()
+                                                        }
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    } else Modifier
+                                )
+                        ) {
+                            Icon(
+                                imageVector = if (isReceiving) Icons.Default.MicOff else Icons.Default.Mic,
+                                contentDescription = "Hold to talk",
+                                tint = if (isPressing) MaterialTheme.colorScheme.onErrorContainer 
+                                       else if (isReceiving) MaterialTheme.colorScheme.onSurfaceVariant 
+                                       else MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                    } else {
+                        IconButton(
+                            onClick = {
+                                viewModel.sendBroadcast(inputText)
+                                inputText = ""
+                            },
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+                        ) {
+                            Icon(Icons.Filled.CellTower, contentDescription = "Broadcast to all", tint = MaterialTheme.colorScheme.onPrimary)
+                        }
+                    }
                 }
             }
         }
@@ -286,11 +461,18 @@ fun BroadcastCard(message: BroadcastMessage, totalOnline: Int) {
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = message.text,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
+                if (message.text.startsWith("[Voice Message]")) {
+                    VoiceMessageBubble(
+                        text = message.text,
+                        isOutgoing = message.isOutgoing
+                    )
+                } else {
+                    Text(
+                        text = message.text,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                }
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     horizontalArrangement = Arrangement.End,
@@ -314,5 +496,65 @@ fun BroadcastCard(message: BroadcastMessage, totalOnline: Int) {
                 }
             }
         }
+    }
+}
+
+@Composable
+fun VoiceMessageBubble(
+    text: String,
+    isOutgoing: Boolean
+) {
+    val context = LocalContext.current
+    val durationMs = remember(text) {
+        text.removePrefix("[Voice Message] ").trim().toLongOrNull() ?: 0L
+    }
+
+    fun formatDuration(ms: Long): String {
+        val totalSecs = ms / 1000
+        val minutes = totalSecs / 60
+        val seconds = totalSecs % 60
+        return String.format("%d:%02d", minutes, seconds)
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .padding(8.dp)
+            .widthIn(max = 220.dp)
+            .clickable {
+                android.widget.Toast.makeText(context, "Voice messages can't be replayed", android.widget.Toast.LENGTH_SHORT).show()
+            }
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Mic,
+            contentDescription = "Voice message",
+            tint = if (isOutgoing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        
+        // Waveform placeholder: static decorative bars
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.weight(1f)
+        ) {
+            repeat(12) { i ->
+                val h = (4 + (i * 7 % 16)).dp
+                Box(
+                    Modifier
+                        .width(2.dp)
+                        .height(h)
+                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                )
+            }
+        }
+        
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = formatDuration(durationMs),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+        )
     }
 }

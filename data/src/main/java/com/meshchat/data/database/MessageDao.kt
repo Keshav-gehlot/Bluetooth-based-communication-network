@@ -25,4 +25,13 @@ interface MessageDao {
 
     @Query("DELETE FROM messages")
     suspend fun clearAllMessages()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMedia(msg: MessageEntity)
+
+    @Query("SELECT * FROM messages WHERE conversationId = :id AND mediaTransferId IS NOT NULL ORDER BY timestamp ASC")
+    fun observeMediaForConversation(id: String): Flow<List<MessageEntity>>
+
+    @Query("UPDATE messages SET mediaStatus = :status, mediaLocalPath = CASE WHEN :localPath IS NOT NULL THEN :localPath ELSE mediaLocalPath END WHERE mediaTransferId = :transferId")
+    suspend fun updateMediaStatus(transferId: String, status: String, localPath: String?)
 }

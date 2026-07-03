@@ -4,8 +4,28 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 enum class PacketType {
-    CHAT, BROADCAST, ANNOUNCEMENT, SYSTEM
+    CHAT, BROADCAST, ANNOUNCEMENT, SYSTEM,
+    CONTROL, METRICS,
+    PRESENCE,           // T-7: richer presence with dual IDs
+    DELIVERY_ACK,       // message delivery acknowledgement
+    TYPING,             // typing indicator
+    USERNAME_CLAIM,     // T-2: "I want this username"
+    USERNAME_CONFLICT,  // T-2: "That username is taken"
+    USERNAME_REGISTRY,  // T-2: gossip — here is my known registry
+    USERNAME_RELEASE,   // T-2: user changed name, releasing old one
+    MEDIA_HEADER,       // M-1: announces a new media transfer (metadata)
+    MEDIA_CHUNK,        // M-1: carries an encrypted segment of the media
+    MEDIA_CHUNK_ACK,    // M-1: acknowledges segment receipt (used for backpressure)
+    MEDIA_EOF,          // M-1: signals transfer end from sender
+    MEDIA_ACK,          // M-1: confirms whole-file verification by receiver
+    MEDIA_CANCEL,       // M-1: cancels transfer
+    MEDIA_AVAILABLE,    // M-1: gossip notification
+    VOICE_START,        // V-1: sender begins PTT — init decoder on receiver
+    VOICE_FRAME,        // V-1: one 20ms Opus-encoded audio frame
+    VOICE_END,          // V-1: sender releases PTT — drain jitter buffer
+    VOICE_BUSY,         // V-1: peer is already transmitting — reject new PTT
 }
+
 
 @Serializable
 data class Packet(

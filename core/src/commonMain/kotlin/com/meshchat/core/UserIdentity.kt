@@ -1,12 +1,9 @@
 package com.meshchat.core
 
-import kotlinx.serialization.Serializable
+/**
+ * @deprecated Use [NodeIdentity] instead.
+ * Kept as a typealias during the T-1 migration.
+ */
+@Deprecated("Use NodeIdentity", ReplaceWith("NodeIdentity"))
+typealias UserIdentity = NodeIdentity
 
-@Serializable
-data class UserIdentity(
-    val nodeId: String,      // auto-generated UUID, never changes
-    val displayName: String, // user-chosen name
-    val avatarSeed: String,  // used to generate deterministic avatar color/initials
-    val publicKey: String,   // base64 encoded public key for future use
-    val createdAt: Long
-)

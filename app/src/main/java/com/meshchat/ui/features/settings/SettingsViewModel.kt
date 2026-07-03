@@ -2,7 +2,8 @@ package com.meshchat.ui.features.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.meshchat.domain.model.UserIdentity
+import com.meshchat.core.TransportMode
+import com.meshchat.domain.model.NodeIdentity
 import com.meshchat.domain.usecase.identity.JoinRoomUseCase
 import com.meshchat.domain.usecase.identity.GetIdentityUseCase
 import com.meshchat.domain.usecase.identity.ObserveIdsEnabledUseCase
@@ -26,10 +27,11 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class SettingsUiState(
-    val identity: UserIdentity,
+    val identity: NodeIdentity,
     val joinedRooms: Set<String>,
     val maxHops: Int = 3,
-    val idsEnabled: Boolean = true
+    val idsEnabled: Boolean = true,
+    val transportMode: TransportMode = TransportMode.BLUETOOTH,
 )
 
 @HiltViewModel
@@ -65,10 +67,10 @@ class SettingsViewModel @Inject constructor(
         )
 
     private fun buildSettingsState(
-        identity: UserIdentity,
+        identity: NodeIdentity,
         joinedRooms: Set<String>,
         maxHops: Int,
-        idsEnabled: Boolean
+        idsEnabled: Boolean,
     ): ScreenUiState<SettingsUiState> {
         return ScreenUiState.Success(SettingsUiState(identity, joinedRooms, maxHops, idsEnabled))
     }

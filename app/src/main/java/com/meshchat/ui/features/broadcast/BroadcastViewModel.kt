@@ -7,6 +7,9 @@ import com.meshchat.domain.usecase.messaging.ObserveBroadcastsUseCase
 import com.meshchat.domain.usecase.messaging.SendBroadcastUseCase
 import com.meshchat.domain.usecase.peers.ObservePeersUseCase
 import com.meshchat.ui.core.ScreenUiState
+import com.meshchat.voice.VoiceEngine
+import com.meshchat.domain.model.VoiceSession
+import kotlinx.coroutines.flow.filter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -43,13 +46,46 @@ class BroadcastViewModel @Inject constructor(
     private val observeBroadcastsUseCase: ObserveBroadcastsUseCase,
     private val observePeersUseCase: ObservePeersUseCase,
     private val observeJoinedRoomsUseCase: ObserveJoinedRoomsUseCase,
-    private val sendBroadcastUseCase: SendBroadcastUseCase
+    private val sendBroadcastUseCase: SendBroadcastUseCase,
+    private val voiceEngine: VoiceEngine
 ) : ViewModel() {
 
     private val _sendError = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val sendError = _sendError.asSharedFlow()
 
     private val _activeRoomId = MutableStateFlow<String?>(null)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val voiceSession: StateFlow<VoiceSession?> = _activeRoomId
+        .flatMapLatest { room ->
+            val conversationId = "broadcast_${room ?: "MESH0"}"
+            voiceEngine.sessionFlow
+                .filter { it.conversationId == conversationId }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val isChannelBusy: StateFlow<Boolean> = voiceEngine.isChannelBusy
+
+    fun onPttDown() {
+        val currentRoom = _activeRoomId.value ?: return
+        viewModelScope.launch {
+            voiceEngine.startTransmitting(
+                dstUsername = "ALL",
+                conversationId = "broadcast_$currentRoom",
+                scope = viewModelScope
+            )
+        }
+    }
+
+    fun onPttUp() {
+        val currentRoom = _activeRoomId.value ?: return
+        viewModelScope.launch {
+            voiceEngine.stopTransmitting(
+                dstUsername = "ALL",
+                conversationId = "broadcast_$currentRoom"
+            )
+        }
+    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val state: StateFlow<ScreenUiState<BroadcastUiState>> = combine(

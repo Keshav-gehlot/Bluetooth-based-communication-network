@@ -15,10 +15,10 @@ class PeerRepositoryImpl @Inject constructor(
 
     override fun observePeers(): Flow<List<Peer>> {
         return presenceManager.peers.map { peerMap ->
-            peerMap.map { (nodeId, info) ->
+            peerMap.map { (username, info) ->
                 Peer(
-                    nodeId = nodeId,
-                    displayName = info.displayName,
+                    nodeId = username,
+                    displayName = info.username,
                     avatarSeed = info.avatarSeed,
                     isOnline = info.isOnline,
                     hopDistance = info.hopDistance,

@@ -59,4 +59,9 @@ class CryptoRepositoryImpl @Inject constructor(
     override suspend fun joinRoom(newCode: String) {
         roomCodeManager.joinRoom(newCode)
     }
+
+    override fun getCurrentKey(): ByteArray? {
+        val targetCode = roomCodeManager.joinedRooms.value.firstOrNull()
+        return if (targetCode != null) roomCodeManager.getDerivedMeshKey(targetCode) else null
+    }
 }

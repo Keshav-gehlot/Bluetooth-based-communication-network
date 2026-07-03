@@ -73,12 +73,12 @@ class NearbyViewModel @Inject constructor(
             )
         }
         
-        val ownAvatarData = AvatarGenerator.generate(ownIdentity.nodeId, ownIdentity.displayName)
+        val ownAvatarData = AvatarGenerator.generate(ownIdentity.username, ownIdentity.username)
         return ScreenUiState.Success(
             NearbyUiState(
                 peers = mappedPeers,
-                ownNodeId = ownIdentity.nodeId,
-                ownDisplayName = ownIdentity.displayName,
+                ownNodeId = ownIdentity.username,
+                ownDisplayName = ownIdentity.username,
                 ownAvatarColor = ownAvatarData.backgroundColor,
                 ownJoinedRooms = joinedRooms
             )

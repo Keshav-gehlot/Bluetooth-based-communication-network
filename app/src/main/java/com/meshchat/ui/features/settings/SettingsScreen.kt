@@ -37,6 +37,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.Surface
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -51,7 +53,13 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.meshchat.core.TransportMode
+import com.meshchat.domain.model.NodeIdentity
 import com.meshchat.ui.core.ScreenUiState
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -104,6 +112,11 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     item {
+                        // ── IDENTITY card ──────────────────────────────────────────────────
+                        IdentityCard(identity = data.identity)
+                    }
+
+                    item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -111,7 +124,7 @@ fun SettingsScreen(
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text("Profile", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                 Spacer(modifier = Modifier.height(16.dp))
-                                
+
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically
@@ -124,7 +137,7 @@ fun SettingsScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = data.identity.displayName.take(1).uppercase(),
+                                            text = data.identity.username.take(1).uppercase(),
                                             color = MaterialTheme.colorScheme.onPrimary,
                                             fontSize = 24.sp,
                                             fontWeight = FontWeight.Bold
@@ -132,8 +145,8 @@ fun SettingsScreen(
                                     }
                                     Spacer(modifier = Modifier.width(16.dp))
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text("Display Name", style = MaterialTheme.typography.bodySmall)
-                                        Text(data.identity.displayName, style = MaterialTheme.typography.bodyLarge)
+                                        Text("Username", style = MaterialTheme.typography.bodySmall)
+                                        Text("@${data.identity.username}", style = MaterialTheme.typography.bodyLarge)
                                     }
                                     Button(onClick = { showNameDialog = true }) {
                                         Text("Edit")
@@ -243,7 +256,7 @@ fun SettingsScreen(
                 }
 
                 if (showNameDialog) {
-                    var newName by remember { mutableStateOf(data.identity.displayName) }
+                    var newName by remember { mutableStateOf(data.identity.username) }
                     AlertDialog(
                         onDismissRequest = { showNameDialog = false },
                         title = { Text("Update Display Name") },
@@ -347,3 +360,82 @@ fun SettingsScreen(
         }
     }
 }
+
+// ── IDENTITY card ──────────────────────────────────────────────────────────────
+
+@Composable
+fun IdentityCard(identity: NodeIdentity) {
+    val clipboardManager = LocalClipboardManager.current
+    val monoFamily = FontFamily.Monospace
+    val accent = Color(0xFF6C63FF)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF141414)),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                "IDENTITY",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF666666),
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.5.sp,
+            )
+
+            // Username + claimed badge
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "@${identity.username}",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                )
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (identity.usernameClaimed) Color(0xFF0D3D2D) else Color(0xFF2D2400),
+                ) {
+                    Text(
+                        if (identity.usernameClaimed) "✓ Claimed · permanent" else "⏳ Pending",
+                        color = if (identity.usernameClaimed) Color(0xFF00C896) else Color(0xFFFFAA00),
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    )
+                }
+            }
+
+            HorizontalDivider(color = Color(0xFF222222))
+
+            // BT node ID
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("🔵 BT", color = Color(0xFF888888), fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                Text(
+                    identity.btNodeId,
+                    fontFamily = monoFamily,
+                    fontSize = 12.sp,
+                    color = accent,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = { clipboardManager.setText(AnnotatedString(identity.btNodeId)) }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "Copy BT ID", tint = Color(0xFF555555), modifier = Modifier.size(16.dp))
+                }
+            }
+
+            // WiFi node ID
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("📶 WiFi", color = Color(0xFF888888), fontSize = 12.sp, modifier = Modifier.width(52.dp))
+                Text(
+                    identity.wifiNodeId,
+                    fontFamily = monoFamily,
+                    fontSize = 12.sp,
+                    color = accent,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = { clipboardManager.setText(AnnotatedString(identity.wifiNodeId)) }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "Copy WiFi ID", tint = Color(0xFF555555), modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+    }
+}
+

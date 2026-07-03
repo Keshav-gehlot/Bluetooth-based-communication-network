@@ -14,4 +14,6 @@ interface ChatRepository {
     fun observeBroadcasts(): Flow<List<Message>>
     suspend fun markConversationRead(conversationId: String)
     suspend fun clearAllMessages()
+    suspend fun updateMediaTransfer(transfer: com.meshchat.domain.model.MediaTransfer)
+    suspend fun insertMediaMessage(message: Message)
 }

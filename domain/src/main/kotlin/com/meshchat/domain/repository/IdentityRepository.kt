@@ -1,12 +1,23 @@
 package com.meshchat.domain.repository
 
-import com.meshchat.domain.model.UserIdentity
+import com.meshchat.core.TransportMode
+import com.meshchat.domain.model.NodeIdentity
 import kotlinx.coroutines.flow.Flow
 
 interface IdentityRepository {
-    fun observeIdentity(): Flow<UserIdentity>
+    // Identity observation
+    fun observeIdentity(): Flow<NodeIdentity>
+
+    // Setup / claim lifecycle
+    suspend fun createIdentity(username: String): NodeIdentity
+    suspend fun markUsernameClaimed()
+    suspend fun saveIdentity(identity: NodeIdentity)
+
+    // Transport-aware ID resolution
+    fun getActiveNodeId(mode: TransportMode): String
+
+    // Room / mesh settings (retained from legacy)
     fun observeJoinedRooms(): Flow<Set<String>>
-    suspend fun saveIdentity(identity: UserIdentity)
     suspend fun updateDisplayName(name: String)
     fun isSetupCompleted(): Boolean
     fun setSetupCompleted(completed: Boolean)
@@ -15,4 +26,7 @@ interface IdentityRepository {
     fun getIdsEnabled(): Flow<Boolean>
     suspend fun setMaxHops(hops: Int)
     suspend fun setIdsEnabled(enabled: Boolean)
+    fun getTransportMode(): Flow<TransportMode>
+    suspend fun saveTransportMode(mode: TransportMode)
 }
+

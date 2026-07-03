@@ -9,6 +9,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,6 +59,32 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import android.net.Uri
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import coil.compose.AsyncImage
+import com.meshchat.ui.features.media.ImageViewerScreen
+import com.meshchat.ui.features.media.VideoPlayerScreen
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -74,10 +101,38 @@ fun ChatScreen(
     viewModel: ChatViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var activeViewerMedia by remember { mutableStateOf<Message?>(null) }
     var inputText by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     val displayPeerName = viewModel.peerName
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.onImagePicked(uri)
+        }
+    }
+
+    val videoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.onVideoPicked(uri)
+        }
+    }
+
+    val context = LocalContext.current
+    val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            android.widget.Toast.makeText(context, "Microphone permission granted! Hold to talk.", android.widget.Toast.LENGTH_SHORT).show()
+        } else {
+            android.widget.Toast.makeText(context, "Microphone permission is required for PTT", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Collect send errors and show as Snackbar
     LaunchedEffect(Unit) {
@@ -150,32 +205,215 @@ fun ChatScreen(
             }
         },
         bottomBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = inputText,
-                    onValueChange = { inputText = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Message...") },
-                    maxLines = 4
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                IconButton(
-                    onClick = {
-                        if (inputText.isNotBlank()) {
-                            viewModel.sendMessage(inputText)
-                            inputText = ""
+            val voiceSession by viewModel.voiceSession.collectAsStateWithLifecycle()
+            val isChannelBusy by viewModel.isChannelBusy.collectAsStateWithLifecycle()
+            val context = LocalContext.current
+            var showAttachmentMenu by remember { mutableStateOf(false) }
+
+            Column {
+                // Voice PTT Active Overlay
+                val voiceSessionState = voiceSession?.state
+                if (voiceSessionState is com.meshchat.domain.model.VoiceSessionState.Transmitting ||
+                    voiceSessionState is com.meshchat.domain.model.VoiceSessionState.Receiving) {
+                    
+                    val isOutgoing = voiceSessionState is com.meshchat.domain.model.VoiceSessionState.Transmitting
+                    val barColor = if (isOutgoing) MaterialTheme.colorScheme.errorContainer else Color(0xFFE8F5E9)
+                    val barTextColor = if (isOutgoing) MaterialTheme.colorScheme.onErrorContainer else Color(0xFF2E7D32)
+                    val dotColor = if (isOutgoing) Color.Red else Color.Green
+                    
+                    // Pulsing animation for the dot
+                    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+                    val alpha by infiniteTransition.animateFloat(
+                        initialValue = 0.3f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1000, easing = LinearEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "alpha"
+                    )
+
+                    // Timer calculation
+                    var seconds by remember { mutableStateOf(0) }
+                    LaunchedEffect(voiceSessionState) {
+                        seconds = 0
+                        while (isActive) {
+                            delay(1000)
+                            seconds++
                         }
-                    },
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(barColor)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .clip(CircleShape)
+                                    .background(dotColor.copy(alpha = alpha))
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (isOutgoing) "TRANSMITTING" else "${voiceSession?.senderUsername ?: "Peer"} speaking...",
+                                color = barTextColor,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Animate 8 random waveform bars
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            repeat(8) { i ->
+                                var barHeight by remember { mutableStateOf(10f) }
+                                LaunchedEffect(voiceSessionState) {
+                                    while (isActive) {
+                                        barHeight = (5..35).random().toFloat()
+                                        delay((50..150).random().toLong())
+                                    }
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .width(3.dp)
+                                        .height(barHeight.dp)
+                                        .background(barTextColor.copy(alpha = 0.8f))
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = String.format("%02d:%02d", seconds / 60, seconds % 60),
+                            color = barTextColor,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // Input Bar
+                Row(
                     modifier = Modifier
-                        .minimumInteractiveComponentSize()
-                        .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send message", tint = MaterialTheme.colorScheme.onPrimary)
+                    IconButton(
+                        onClick = { showAttachmentMenu = true },
+                        modifier = Modifier.minimumInteractiveComponentSize()
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Attach file")
+                        DropdownMenu(
+                            expanded = showAttachmentMenu,
+                            onDismissRequest = { showAttachmentMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Send Image") },
+                                onClick = {
+                                    showAttachmentMenu = false
+                                    imagePickerLauncher.launch("image/*")
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Send Video") },
+                                onClick = {
+                                    showAttachmentMenu = false
+                                    videoPickerLauncher.launch("video/*")
+                                }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    OutlinedTextField(
+                        value = inputText,
+                        onValueChange = { inputText = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Message...") },
+                        maxLines = 4
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    if (inputText.isBlank()) {
+                        // Mic (PTT) Button when input text is empty
+                        var isPressing by remember { mutableStateOf(false) }
+                        val isReceiving = voiceSessionState is com.meshchat.domain.model.VoiceSessionState.Receiving
+                        IconButton(
+                            onClick = {
+                                if (isReceiving) {
+                                    android.widget.Toast.makeText(context, "Channel busy", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    android.widget.Toast.makeText(context, "Hold to talk", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            enabled = !isReceiving,
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .background(
+                                    if (isPressing) MaterialTheme.colorScheme.errorContainer 
+                                    else if (isReceiving) MaterialTheme.colorScheme.surfaceVariant 
+                                    else MaterialTheme.colorScheme.primaryContainer,
+                                    CircleShape
+                                )
+                                .then(
+                                    if (!isReceiving) {
+                                        Modifier.pointerInput(Unit) {
+                                            detectTapGestures(
+                                                onLongPress = {
+                                                    if (androidx.core.content.ContextCompat.checkSelfPermission(
+                                                            context,
+                                                            android.Manifest.permission.RECORD_AUDIO
+                                                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                                    ) {
+                                                        isPressing = true
+                                                        viewModel.onPttDown()
+                                                    } else {
+                                                        recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                                    }
+                                                },
+                                                onPress = {
+                                                    try {
+                                                        awaitRelease()
+                                                    } finally {
+                                                        if (isPressing) {
+                                                            isPressing = false
+                                                            viewModel.onPttUp()
+                                                        }
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    } else Modifier
+                                )
+                        ) {
+                            Icon(
+                                imageVector = if (isReceiving) Icons.Default.MicOff else Icons.Default.Mic,
+                                contentDescription = "Hold to talk",
+                                tint = if (isPressing) MaterialTheme.colorScheme.onErrorContainer 
+                                       else if (isReceiving) MaterialTheme.colorScheme.onSurfaceVariant 
+                                       else MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                    } else {
+                        // Send Button when text is present
+                        IconButton(
+                            onClick = {
+                                viewModel.sendMessage(inputText)
+                                inputText = ""
+                            },
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send message", tint = MaterialTheme.colorScheme.onPrimary)
+                        }
+                    }
                 }
             }
         }
@@ -198,7 +436,11 @@ fun ChatScreen(
                         contentPadding = PaddingValues(8.dp)
                     ) {
                         items(messages) { msg ->
-                            MessageBubble(message = msg)
+                            MessageBubble(
+                                message = msg,
+                                onCancelTransfer = { viewModel.onCancelTransfer(it) },
+                                onClickMedia = { activeViewerMedia = it }
+                            )
                         }
                         if (currentState.data.isTyping) {
                             item { TypingIndicator() }
@@ -206,12 +448,26 @@ fun ChatScreen(
                     }
                 }
             }
+
+            if (activeViewerMedia != null) {
+                val media = activeViewerMedia!!
+                val path = media.mediaLocalPath ?: ""
+                if (media.mediaType == com.meshchat.core.MediaType.IMAGE) {
+                    ImageViewerScreen(localUri = path, onClose = { activeViewerMedia = null })
+                } else if (media.mediaType == com.meshchat.core.MediaType.VIDEO) {
+                    VideoPlayerScreen(localUri = path, onClose = { activeViewerMedia = null })
+                }
+            }
         }
     }
 }
 
 @Composable
-fun MessageBubble(message: Message) {
+fun MessageBubble(
+    message: Message,
+    onCancelTransfer: (String) -> Unit = {},
+    onClickMedia: (Message) -> Unit = {}
+) {
     val isOutgoing = message.isOutgoing
     Row(
         modifier = Modifier
@@ -241,11 +497,24 @@ fun MessageBubble(message: Message) {
                     stateDescription = "Status: ${message.status.name}"
                 }
         ) {
-            Text(
-                text = message.text,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground
-            )
+            if (message.mediaTransferId != null) {
+                MediaBubbleContent(
+                    message = message,
+                    onCancelTransfer = onCancelTransfer,
+                    onClick = { onClickMedia(message) }
+                )
+            } else if (message.text.startsWith("[Voice Message]")) {
+                VoiceMessageBubble(
+                    text = message.text,
+                    isOutgoing = isOutgoing
+                )
+            } else {
+                Text(
+                    text = message.text,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
             Spacer(modifier = Modifier.height(4.dp))
             Row(
                 horizontalArrangement = Arrangement.End,
@@ -267,6 +536,214 @@ fun MessageBubble(message: Message) {
                 }
             }
         }
+    }
+}
+
+@Composable
+fun MediaBubbleContent(
+    message: Message,
+    onCancelTransfer: (String) -> Unit,
+    onClick: () -> Unit
+) {
+    val thumbnailBitmap = remember(message.mediaThumbnailBase64) {
+        if (!message.mediaThumbnailBase64.isNullOrEmpty()) {
+            try {
+                val bytes = android.util.Base64.decode(message.mediaThumbnailBase64, android.util.Base64.DEFAULT)
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+            } catch (e: Exception) {
+                null
+            }
+        } else {
+            null
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(180.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.DarkGray)
+            .then(
+                if (message.mediaStatus == "COMPLETE" && !message.mediaLocalPath.isNullOrEmpty()) {
+                    Modifier.clickable { onClick() }
+                } else {
+                    Modifier
+                }
+            )
+    ) {
+        if (!message.mediaLocalPath.isNullOrEmpty()) {
+            AsyncImage(
+                model = message.mediaLocalPath,
+                contentDescription = "Media attachment",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else if (thumbnailBitmap != null) {
+            Image(
+                bitmap = thumbnailBitmap,
+                contentDescription = "Media thumbnail",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        if (message.mediaType == com.meshchat.core.MediaType.VIDEO) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .align(Alignment.Center)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.5f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "Play video",
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+
+        when (message.mediaStatus) {
+            "PENDING", "PROGRESS", "VERIFYING" -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.4f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(36.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = if (message.mediaStatus == "VERIFYING") "Verifying..." else "Transferring...",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+
+                        if (message.isOutgoing && message.mediaStatus != "VERIFYING") {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(
+                                onClick = { onCancelTransfer(message.id) },
+                                colors = ButtonDefaults.textButtonColors(contentColor = Color.Red)
+                            ) {
+                                Text("Cancel", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+            }
+            "FAILED" -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Red.copy(alpha = 0.6f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "Failed",
+                            tint = Color.White,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Transfer Failed",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+            "CANCELLED" -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Gray.copy(alpha = 0.6f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Cancelled",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun VoiceMessageBubble(
+    text: String,
+    isOutgoing: Boolean
+) {
+    val context = LocalContext.current
+    val durationMs = remember(text) {
+        text.removePrefix("[Voice Message] ").trim().toLongOrNull() ?: 0L
+    }
+
+    fun formatDuration(ms: Long): String {
+        val totalSecs = ms / 1000
+        val minutes = totalSecs / 60
+        val seconds = totalSecs % 60
+        return String.format("%d:%02d", minutes, seconds)
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .padding(8.dp)
+            .widthIn(max = 220.dp)
+            .clickable {
+                android.widget.Toast.makeText(context, "Voice messages can't be replayed", android.widget.Toast.LENGTH_SHORT).show()
+            }
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Mic,
+            contentDescription = "Voice message",
+            tint = if (isOutgoing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        
+        // Waveform placeholder: static decorative bars
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.weight(1f)
+        ) {
+            repeat(12) { i ->
+                val h = (4 + (i * 7 % 16)).dp
+                Box(
+                    Modifier
+                        .width(2.dp)
+                        .height(h)
+                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                )
+            }
+        }
+        
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = formatDuration(durationMs),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+        )
     }
 }
 

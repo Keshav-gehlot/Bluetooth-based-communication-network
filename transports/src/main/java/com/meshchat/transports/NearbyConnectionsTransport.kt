@@ -25,12 +25,19 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * @deprecated Replaced by [BluetoothNearbyTransport] and [WifiNearbyTransport]
+ * which are orchestrated by [DualTransportManager].
+ * This class is kept during migration and will be removed in a future version.
+ */
+@Deprecated("Use DualTransportManager instead")
 @Singleton
 class NearbyConnectionsTransport @Inject constructor(
     @ApplicationContext private val context: Context,
     private val identityRepository: IdentityRepository,
     private val presenceManager: PresenceManager
 ) : TransportAdapter {
+
 
     companion object {
         const val SERVICE_ID = "com.meshchat.nearby"
@@ -45,7 +52,7 @@ class NearbyConnectionsTransport @Inject constructor(
     override val incomingPackets: Flow<Packet> = _incomingChannel.receiveAsFlow()
 
     private val _peersFlow = MutableStateFlow<Set<String>>(emptySet())
-    val peersFlow: StateFlow<Set<String>> = _peersFlow.asStateFlow()
+    override val peersFlow: StateFlow<Set<String>> = _peersFlow.asStateFlow()
 
     private var localNodeId: String? = null
     private var isAdvertising = false
@@ -267,10 +274,13 @@ class NearbyConnectionsTransport @Inject constructor(
         try {
             val ownIdentity = identityRepository.observeIdentity().first()
             val presenceData = PresencePayload(
-                nodeId = localId,
-                displayName = ownIdentity.displayName,
+                username = ownIdentity.username,
+                btNodeId = ownIdentity.btNodeId,
+                wifiNodeId = ownIdentity.wifiNodeId,
                 avatarSeed = ownIdentity.avatarSeed,
-                timestamp = System.currentTimeMillis()
+                activeTransport = TransportMode.BLUETOOTH,
+                timestamp = System.currentTimeMillis(),
+                usernameClaimed = ownIdentity.usernameClaimed
             )
             val presenceJson = json.encodeToString(presenceData)
             val payloadBytes = presenceJson.toByteArray(Charsets.UTF_8)
