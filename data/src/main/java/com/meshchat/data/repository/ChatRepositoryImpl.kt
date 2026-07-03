@@ -105,6 +105,7 @@ class ChatRepositoryImpl @Inject constructor(
                     )
                     meshNode = node
                     claimProtocol.setMeshNode(node)
+                    voiceBridge.setMeshNode(node)
                     node.start(scope)
 
                     // Listen to incoming packets routed through the MeshNode

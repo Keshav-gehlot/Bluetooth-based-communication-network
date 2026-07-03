@@ -31,12 +31,44 @@ import javax.inject.Singleton
 @Singleton
 class VoiceEngine @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val meshNode: MeshNode,
     private val transport: DualTransportManager,
     private val identityRepository: IdentityRepository,
+    private val presenceManager: PresenceManager,
     private val audioFocusManager: AudioFocusManager,
     private val messageDao: MessageDao
 ) : VoiceBridge {
+
+    private var meshNode: MeshNode? = null
+    override fun setMeshNode(node: MeshNode) {
+        meshNode = node
+    }
+
+    private suspend fun sendVoicePacket(dstUsername: String, type: PacketType, payloadData: ByteArray) {
+        val node = meshNode ?: return
+        val identity = identityRepository.observeIdentity().first()
+        val mode = identityRepository.getTransportMode().first()
+        val ownNodeId = identityRepository.getActiveNodeId(mode)
+        
+        val targetNodeId = if (dstUsername == "BROADCAST") null else {
+            val peer = presenceManager.getPeerByUsername(dstUsername)
+            if (peer != null) {
+                if (peer.activeTransport == TransportMode.WIFI) peer.wifiNodeId else peer.btNodeId
+            } else {
+                dstUsername
+            }
+        }
+        
+        val packet = Packet(
+            id = UUID.randomUUID().toString(),
+            type = type,
+            senderId = ownNodeId,
+            targetId = targetNodeId,
+            payload = payloadData,
+            timestamp = System.currentTimeMillis(),
+            hopCount = 0
+        )
+        node.sendPacket(packet)
+    }
 
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
@@ -124,6 +156,9 @@ class VoiceEngine @Inject constructor(
         }
 
         val mode = identityRepository.getTransportMode().first()
+        val identity = identityRepository.observeIdentity().first()
+        val localUsername = identity.username
+        val localNodeId = identityRepository.getActiveNodeId(mode)
         val bitrate = VoiceBitratePolicy.opusBitrate(mode)
         isTransmitting = true
         transmitStartTime = System.currentTimeMillis()
@@ -133,7 +168,7 @@ class VoiceEngine @Inject constructor(
         _sessionFlow.emit(
             VoiceSession(
                 sessionId = sessionId,
-                senderUsername = meshNode.localUsername,
+                senderUsername = localUsername,
                 conversationId = conversationId,
                 state = VoiceSessionState.Transmitting,
                 durationMs = 0,
@@ -145,16 +180,16 @@ class VoiceEngine @Inject constructor(
         // 2. Send VOICE_START
         val startPayload = VoiceStartPayload(
             sessionId = sessionId,
-            senderUsername = meshNode.localUsername,
-            senderNodeId = meshNode.localNodeId,
+            senderUsername = localUsername,
+            senderNodeId = localNodeId,
             conversationId = conversationId,
             opusBitrate = bitrate,
             timestamp = transmitStartTime
         )
-        meshNode.send(
-            dst = dstUsername,
-            payload = Json.encodeToString(startPayload).encodeToByteArray(),
-            type = PacketType.VOICE_START
+        sendVoicePacket(
+            dstUsername = dstUsername,
+            type = PacketType.VOICE_START,
+            payloadData = Json.encodeToString(startPayload).encodeToByteArray()
         )
 
         val encoder = OpusEncoder(bitrate).also { it.start() }
@@ -209,10 +244,10 @@ class VoiceEngine @Inject constructor(
                         timestampMs = timestampMs,
                         opusData = Base64.encodeToString(opus, Base64.NO_WRAP)
                     )
-                    meshNode.send(
-                        dst = dstUsername,
-                        payload = Json.encodeToString(framePayload).encodeToByteArray(),
-                        type = PacketType.VOICE_FRAME
+                    sendVoicePacket(
+                        dstUsername = dstUsername,
+                        type = PacketType.VOICE_FRAME,
+                        payloadData = Json.encodeToString(framePayload).encodeToByteArray()
                     )
                 }
             } finally {
@@ -227,6 +262,7 @@ class VoiceEngine @Inject constructor(
         isTransmitting = false
         val sessionId = _activeSession.value ?: return
         val durationMs = System.currentTimeMillis() - transmitStartTime
+        val localUsername = identityRepository.observeIdentity().first().username
 
         // Send VOICE_END
         val endPayload = VoiceEndPayload(
@@ -234,10 +270,10 @@ class VoiceEngine @Inject constructor(
             finalSeq = transmitSeq,
             durationMs = durationMs
         )
-        meshNode.send(
-            dst = dstUsername,
-            payload = Json.encodeToString(endPayload).encodeToByteArray(),
-            type = PacketType.VOICE_END
+        sendVoicePacket(
+            dstUsername = dstUsername,
+            type = PacketType.VOICE_END,
+            payloadData = Json.encodeToString(endPayload).encodeToByteArray()
         )
 
         _activeSession.value = null
@@ -248,13 +284,19 @@ class VoiceEngine @Inject constructor(
         val message = MessageEntity(
             id = sessionId,
             text = text,
-            senderId = meshNode.localUsername,
-            senderName = meshNode.localUsername,
+            senderId = localUsername,
+            senderName = localUsername,
             timestamp = transmitStartTime,
             isOutgoing = true,
             status = "DELIVERED",
             hopCount = 0,
-            conversationId = conversationId
+            conversationId = conversationId,
+            mediaTransferId = null,
+            mediaType = null,
+            mediaThumbnailBase64 = null,
+            mediaLocalPath = null,
+            mediaSizeBytes = 0L,
+            mediaStatus = ""
         )
         withContext(Dispatchers.IO) {
             messageDao.insertMessage(message)
@@ -263,7 +305,7 @@ class VoiceEngine @Inject constructor(
         _sessionFlow.emit(
             VoiceSession(
                 sessionId = sessionId,
-                senderUsername = meshNode.localUsername,
+                senderUsername = localUsername,
                 conversationId = conversationId,
                 state = VoiceSessionState.Completed(durationMs),
                 durationMs = durationMs,
@@ -285,10 +327,10 @@ class VoiceEngine @Inject constructor(
     override suspend fun onVoiceStart(payload: VoiceStartPayload) {
         if (!_activeSession.compareAndSet(null, payload.sessionId)) {
             // Already busy with another session — send busy packet
-            meshNode.send(
-                dst = payload.senderUsername,
-                payload = ByteArray(0),
-                type = PacketType.VOICE_BUSY
+            sendVoicePacket(
+                dstUsername = payload.senderUsername,
+                type = PacketType.VOICE_BUSY,
+                payloadData = ByteArray(0)
             )
             return
         }
@@ -401,7 +443,13 @@ class VoiceEngine @Inject constructor(
                 isOutgoing = false,
                 status = "DELIVERED",
                 hopCount = 0,
-                conversationId = conversationId
+                conversationId = conversationId,
+                mediaTransferId = null,
+                mediaType = null,
+                mediaThumbnailBase64 = null,
+                mediaLocalPath = null,
+                mediaSizeBytes = 0L,
+                mediaStatus = ""
             )
             withContext(Dispatchers.IO) {
                 messageDao.insertMessage(message)
