@@ -1,3 +1,5 @@
+@file:Suppress("PLUGIN_ERROR", "SERIALIZER_NOT_FOUND")
+
 package com.meshchat.core
 
 import kotlinx.serialization.Serializable
