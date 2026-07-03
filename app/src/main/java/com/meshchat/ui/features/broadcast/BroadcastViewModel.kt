@@ -89,7 +89,7 @@ class BroadcastViewModel @Inject constructor(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val state: StateFlow<ScreenUiState<BroadcastUiState>> = combine(
-        _activeRoomId.flatMapLatest { room ->
+        _activeRoomId.flatMapLatest { _ ->
             observeBroadcastsUseCase()
         },
         observePeersUseCase(),

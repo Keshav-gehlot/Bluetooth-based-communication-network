@@ -206,8 +206,7 @@ fun ChatScreen(
         },
         bottomBar = {
             val voiceSession by viewModel.voiceSession.collectAsStateWithLifecycle()
-            val isChannelBusy by viewModel.isChannelBusy.collectAsStateWithLifecycle()
-            val context = LocalContext.current
+            val localContext = LocalContext.current
             var showAttachmentMenu by remember { mutableStateOf(false) }
 
             Column {
@@ -272,7 +271,7 @@ fun ChatScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            repeat(8) { i ->
+                            repeat(8) { _ ->
                                 var barHeight by remember { mutableStateOf(10f) }
                                 LaunchedEffect(voiceSessionState) {
                                     while (isActive) {

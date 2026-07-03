@@ -45,7 +45,7 @@ class VoiceEngine @Inject constructor(
 
     private suspend fun sendVoicePacket(dstUsername: String, type: PacketType, payloadData: ByteArray) {
         val node = meshNode ?: return
-        val identity = identityRepository.observeIdentity().first()
+
         val mode = identityRepository.getTransportMode().first()
         val ownNodeId = identityRepository.getActiveNodeId(mode)
         
@@ -350,7 +350,16 @@ class VoiceEngine @Inject constructor(
         // Route speaker phone mode
         runCatching {
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-            audioManager.isSpeakerphoneOn = true
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val devices = audioManager.availableCommunicationDevices
+                val speaker = devices.firstOrNull { it.type == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                if (speaker != null) {
+                    audioManager.setCommunicationDevice(speaker)
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.isSpeakerphoneOn = true
+            }
         }
 
         val minBufferSize = AudioTrack.getMinBufferSize(
@@ -428,7 +437,12 @@ class VoiceEngine @Inject constructor(
             _activeSession.value = null
 
             runCatching {
-                audioManager.isSpeakerphoneOn = false
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    audioManager.clearCommunicationDevice()
+                } else {
+                    @Suppress("DEPRECATION")
+                    audioManager.isSpeakerphoneOn = false
+                }
                 audioManager.mode = AudioManager.MODE_NORMAL
             }
 

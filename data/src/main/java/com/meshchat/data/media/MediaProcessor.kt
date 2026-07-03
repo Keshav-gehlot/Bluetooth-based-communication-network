@@ -23,9 +23,11 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.ceil
 
+import dagger.hilt.android.qualifiers.ApplicationContext
+
 @Singleton
 class MediaProcessor @Inject constructor(
-    private val context: Context,
+    @ApplicationContext private val context: Context,
 ) {
     private val platformCrypto = PlatformCrypto()
 
