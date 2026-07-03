@@ -57,20 +57,8 @@ class MediaTransferEngine @Inject constructor(
     }
 
     fun start(scope: CoroutineScope) {
-        val node = meshNode ?: return
-        scope.launch {
-            node.receivedPackets.collect { packet ->
-                if (packet.type == PacketType.MEDIA_HEADER ||
-                    packet.type == PacketType.MEDIA_CHUNK ||
-                    packet.type == PacketType.MEDIA_CHUNK_ACK ||
-                    packet.type == PacketType.MEDIA_EOF ||
-                    packet.type == PacketType.MEDIA_ACK ||
-                    packet.type == PacketType.MEDIA_CANCEL
-                ) {
-                    onPacket(packet)
-                }
-            }
-        }
+        // Note: packet routing is handled by ChatRepositoryImpl which calls onPacket() directly.
+        // This method is kept for future use (e.g. starting a cleanup coroutine).
     }
 
     // ─── SEND ──────────────────────────────────────────────────
@@ -264,7 +252,8 @@ class MediaTransferEngine @Inject constructor(
     }
 
     // ─── RECEIVE ───────────────────────────────────────────────
-    private suspend fun onPacket(packet: Packet) {
+    // Called directly from ChatRepositoryImpl for incoming MEDIA_* packets
+    internal suspend fun onPacket(packet: Packet) {
         val key = crypto.getCurrentKey() ?: return
 
         when (packet.type) {
@@ -452,7 +441,9 @@ class MediaTransferEngine @Inject constructor(
     }
 
     private fun buildConversationId(user1: String, user2: String): String {
-        return if (user1 < user2) "dm_${user1}_${user2}" else "dm_${user2}_${user1}"
+        val a = user1.lowercase().trim()
+        val b = user2.lowercase().trim()
+        return if (a < b) "dm_${a}_${b}" else "dm_${b}_${a}"
     }
 
     private fun IncomingTransfer.toProgressEvent(progress: Int): MediaTransfer {

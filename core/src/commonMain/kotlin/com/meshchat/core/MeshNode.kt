@@ -26,7 +26,7 @@ class MeshNode(
                 send(anomaly)
             }
         }
-        _receivedPackets = scope.produce(capacity = 50) {
+        _receivedPackets = scope.produce(capacity = 512) {
             transport.incomingPackets.collect { packet ->
                 handleIncomingPacket(packet, this)
             }

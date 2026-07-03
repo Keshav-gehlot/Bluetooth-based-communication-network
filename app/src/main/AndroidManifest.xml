@@ -33,6 +33,13 @@
     <!-- ── Voice PTT ──────────────────────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <!-- ── Media (Images & Videos) ───────────────────────────────────────────── -->
+    <!-- Pre-API 33: broad external storage read -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- API 33+: granular media permissions -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:targetApi="tiramisu" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:targetApi="tiramisu" />
+
     <!-- ── Hardware features ────────────────────────────────────────────────────── -->
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />

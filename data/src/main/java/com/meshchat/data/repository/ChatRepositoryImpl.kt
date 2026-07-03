@@ -106,7 +106,9 @@ class ChatRepositoryImpl @Inject constructor(
                     meshNode = node
                     claimProtocol.setMeshNode(node)
                     voiceBridge.setMeshNode(node)
+                    mediaTransferEngine.setMeshNode(node)
                     node.start(scope)
+                    mediaTransferEngine.start(scope)
 
                     // Listen to incoming packets routed through the MeshNode
                     node.receivedPackets.collect { packet ->
@@ -202,6 +204,14 @@ class ChatRepositoryImpl @Inject constructor(
                 val payload = kotlinx.serialization.json.Json.decodeFromString<com.meshchat.core.VoiceEndPayload>(String(packet.payload))
                 val convoId = if (packet.targetId == "BROADCAST") "group_broadcast" else generateConversationId(ownIdentity.username, senderUsername)
                 voiceBridge.onVoiceEnd(payload, convoId)
+            }
+            PacketType.MEDIA_HEADER,
+            PacketType.MEDIA_CHUNK,
+            PacketType.MEDIA_CHUNK_ACK,
+            PacketType.MEDIA_EOF,
+            PacketType.MEDIA_ACK,
+            PacketType.MEDIA_CANCEL -> {
+                mediaTransferEngine.onPacket(packet)
             }
             else -> {}
         }
@@ -389,8 +399,9 @@ class ChatRepositoryImpl @Inject constructor(
     }
 
     private fun generateConversationId(user1: String, user2: String): String {
-        return "dm_${user1.lowercase().trim()}_${user2.lowercase().trim()}"
-            .split("_").sorted().joinToString("_")
+        val a = user1.lowercase().trim()
+        val b = user2.lowercase().trim()
+        return if (a < b) "dm_${a}_${b}" else "dm_${b}_${a}"
     }
 
     @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
