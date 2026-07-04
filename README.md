@@ -32,7 +32,7 @@ MeshChat is a decentralized, offline-first communication platform built for Andr
 
 ### Full System Overview
 
-![Full Architecture](01-full-architecture.png)
+![Full Architecture](docs/01-full-architecture.png)
 
 MeshChat follows strict **Clean Architecture** principles with a modular multi-layer design:
 
@@ -48,7 +48,7 @@ MeshChat follows strict **Clean Architecture** principles with a modular multi-l
 
 ### Dual Transport + Username Claim Protocol
 
-![Dual Transport](02-dual-transport.png)
+![Dual Transport](docs/02-dual-transport.png)
 
 Each user has **one permanent username** and **two permanent node IDs** (BT + WiFi), generated once on first launch and stored securely in `EncryptedSharedPreferences` + Android Keystore.
 
@@ -62,7 +62,7 @@ Username claiming uses **distributed consensus** — no server required. A `USER
 
 ### Media Transfer Pipeline
 
-![Media Transfer Pipeline](03-media-pipeline.png)
+![Media Transfer Pipeline](docs/03-media-pipeline.png)
 
 Images and videos are transferred using a **6-packet protocol** (`MEDIA_HEADER → MEDIA_CHUNK ×N → MEDIA_EOF → MEDIA_ACK`) with the following guarantees:
 
@@ -76,7 +76,7 @@ Images and videos are transferred using a **6-packet protocol** (`MEDIA_HEADER �
 
 ### Voice / PTT Pipeline
 
-![Voice PTT Pipeline](04-voice-pipeline.png)
+![Voice PTT Pipeline](docs/04-voice-pipeline.png)
 
 Real-time half-duplex voice using a walkie-talkie Push-To-Talk model:
 
@@ -92,7 +92,7 @@ Real-time half-duplex voice using a walkie-talkie Push-To-Talk model:
 
 ## 📱 Screen Map & Navigation
 
-![Screen Map](05-screen-map.png)
+![Screen Map](docs/05-screen-map.png)
 
 | Screen | Purpose |
 |---|---|
@@ -110,7 +110,7 @@ Real-time half-duplex voice using a walkie-talkie Push-To-Talk model:
 
 ## 🔄 Feature Data Flows
 
-![Feature Data Flows](06-data-flow.png)
+![Feature Data Flows](docs/06-data-flow.png)
 
 Three parallel data pipelines share the same `DualTransportManager` and storage layer:
 
