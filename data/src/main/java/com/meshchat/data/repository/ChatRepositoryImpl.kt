@@ -120,6 +120,12 @@ class ChatRepositoryImpl @Inject constructor(
     }
 
     private suspend fun handleIncomingPacket(packet: Packet, ownIdentity: NodeIdentity) {
+        val isForMe = packet.targetId == null ||
+                packet.targetId == ownIdentity.btNodeId ||
+                packet.targetId == ownIdentity.wifiNodeId ||
+                packet.targetId == ownIdentity.username
+        if (!isForMe) return
+
         val peer = if (packet.senderId.startsWith("WIFI-")) {
             presenceManager.getPeerByWifiId(packet.senderId)
         } else {

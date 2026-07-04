@@ -19,15 +19,27 @@ class IdsMonitor(
 
     private val mutex = Mutex()
     private val rateWindows = mutableMapOf<String, ArrayDeque<Long>>()
-    private val quarantine = mutableSetOf<String>()
+    private val quarantine = mutableMapOf<String, Long>()
+
+    companion object {
+        private const val QUARANTINE_DURATION_MS = 30_000L // 30 seconds
+    }
 
     enum class InspectResult { PASS, QUARANTINED }
 
     // LOCK ORDER: this is the only lock held at this call site
     suspend fun inspect(packet: Packet): InspectResult = mutex.withLock {
-        if (quarantine.contains(packet.senderId)) return@withLock InspectResult.QUARANTINED
-
         val now = Clock.System.now().toEpochMilliseconds()
+        
+        val quarantinedAt = quarantine[packet.senderId]
+        if (quarantinedAt != null) {
+            if (now - quarantinedAt < QUARANTINE_DURATION_MS) {
+                return@withLock InspectResult.QUARANTINED
+            } else {
+                quarantine.remove(packet.senderId) // Quarantine expired
+            }
+        }
+
         val window = rateWindows.getOrPut(packet.senderId) { ArrayDeque() }
         window.addLast(now)
         while (window.isNotEmpty() && now - window.first() > 1000L) {
@@ -35,7 +47,7 @@ class IdsMonitor(
         }
 
         if (window.size > config.maxPacketsPerSecond) {
-            quarantine.add(packet.senderId)
+            quarantine[packet.senderId] = now
             _anomalies.trySend(AnomalyEvent.RateLimitExceeded(packet.senderId))
             return@withLock InspectResult.QUARANTINED
         }

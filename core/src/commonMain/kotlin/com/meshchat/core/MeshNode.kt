@@ -1,10 +1,11 @@
 package com.meshchat.core
 
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.channels.produce
-import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.launch
 
 class MeshNode(
     private val nodeId: String,
@@ -14,26 +15,34 @@ class MeshNode(
     private val deduplicationCache = DeduplicationCache(config.replayWindowMs)
     private val idsMonitor = IdsMonitor(config)
 
-    private lateinit var _receivedPackets: kotlinx.coroutines.channels.ReceiveChannel<Packet>
-    val receivedPackets: Flow<Packet> get() = _receivedPackets.receiveAsFlow()
+    private val _receivedPackets = MutableSharedFlow<Packet>(
+        replay = 0,
+        extraBufferCapacity = 512,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val receivedPackets: Flow<Packet> = _receivedPackets.asSharedFlow()
 
-    private lateinit var _anomaliesChannel: kotlinx.coroutines.channels.ReceiveChannel<AnomalyEvent>
-    val anomalies: Flow<AnomalyEvent> get() = _anomaliesChannel.receiveAsFlow()
+    private val _anomalies = MutableSharedFlow<AnomalyEvent>(
+        replay = 0,
+        extraBufferCapacity = 32,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val anomalies: Flow<AnomalyEvent> = _anomalies.asSharedFlow()
 
     fun start(scope: CoroutineScope) {
-        _anomaliesChannel = scope.produce(capacity = 32) {
+        scope.launch {
             idsMonitor.anomalies.collect { anomaly ->
-                send(anomaly)
+                _anomalies.emit(anomaly)
             }
         }
-        _receivedPackets = scope.produce(capacity = 512) {
+        scope.launch {
             transport.incomingPackets.collect { packet ->
-                handleIncomingPacket(packet, this)
+                handleIncomingPacket(packet)
             }
         }
     }
 
-    private suspend fun handleIncomingPacket(packet: Packet, channel: SendChannel<Packet>) {
+    private suspend fun handleIncomingPacket(packet: Packet) {
         // 1. Deduplication & Replay Check
         if (deduplicationCache.isDuplicateOrReplay(packet.id)) {
             if (config.idsEnabled) {
@@ -59,7 +68,7 @@ class MeshNode(
         }
 
         // 4. Accept the packet for processing
-        channel.send(packet)
+        _receivedPackets.emit(packet)
 
         // 5. Flood forwarding (if not targeted strictly to us)
         if (packet.targetId == null || packet.targetId != nodeId) {

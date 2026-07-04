@@ -9,9 +9,12 @@ class DeduplicationCache(
 ) {
     private val mutex = Mutex()
     private val seenPackets = mutableMapOf<String, Long>()
+    private var callCount = 0
 
     suspend fun isDuplicateOrReplay(packetId: String): Boolean = mutex.withLock {
-        cleanup()
+        if (++callCount % 50 == 0) {
+            cleanup()
+        }
         return@withLock if (seenPackets.containsKey(packetId)) {
             true
         } else {

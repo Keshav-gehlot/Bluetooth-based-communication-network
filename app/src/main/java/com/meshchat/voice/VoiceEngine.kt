@@ -316,7 +316,7 @@ class VoiceEngine @Inject constructor(
     }
 
     // --- RECEIVE ---
-    private val JitterBuffer = JitterBuffer()
+    private val jitterBuffer = JitterBuffer()
     private val decoder = OpusDecoder()
     private var audioTrack: AudioTrack? = null
     private var playbackJob: Job? = null
@@ -336,7 +336,7 @@ class VoiceEngine @Inject constructor(
         }
 
         receivingSenderUsername = payload.senderUsername
-        JitterBuffer.clear()
+        jitterBuffer.clear()
         decoder.start(
             MediaFormat.createAudioFormat(
                 "audio/opus",
@@ -401,7 +401,7 @@ class VoiceEngine @Inject constructor(
 
         // Wait for Jitter Buffer before starting playback
         playbackJob = receiveScope.launch(Dispatchers.Default) {
-            while (!JitterBuffer.push(VoiceFramePayload(payload.sessionId, 0, 0, "")) && isActive) {
+            while (!jitterBuffer.push(VoiceFramePayload(payload.sessionId, 0, 0, "")) && isActive) {
                 delay(5)
             }
             startPlayback()
@@ -411,7 +411,7 @@ class VoiceEngine @Inject constructor(
     // 2. Voice frame callback
     override suspend fun onVoiceFrame(payload: VoiceFramePayload) {
         if (_activeSession.value == payload.sessionId) {
-            JitterBuffer.push(payload)
+            jitterBuffer.push(payload)
         }
     }
 
@@ -421,7 +421,7 @@ class VoiceEngine @Inject constructor(
 
         receiveScope.launch {
             // Wait for remaining frames to play
-            delay(JitterBuffer.size() * 20L + 100L)
+            delay(jitterBuffer.size() * 20L + 100L)
 
             playbackJob?.cancel()
             playbackJob = null
@@ -433,7 +433,7 @@ class VoiceEngine @Inject constructor(
             audioTrack = null
 
             decoder.stop()
-            JitterBuffer.clear()
+            jitterBuffer.clear()
             _activeSession.value = null
 
             runCatching {
@@ -489,7 +489,7 @@ class VoiceEngine @Inject constructor(
         playbackJob = receiveScope.launch(audioPlaybackDispatcher) {
             try {
                 while (isActive && _activeSession.value != null) {
-                    val opusBytes = runBlocking { JitterBuffer.pull() }  // JitterBuffer pull is suspendable
+                    val opusBytes = jitterBuffer.pull()  // jitterBuffer.pull() is suspendable
                     val pcm = decoder.decodeFrame(opusBytes)
                     track.write(pcm, 0, pcm.size)
                 }

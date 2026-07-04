@@ -22,3 +22,7 @@ core/build/
 data/build/
 domain/build/
 transports/build/
+
+# Compiled outputs
+**/bin/
+domain/bin/

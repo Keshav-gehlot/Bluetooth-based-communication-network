@@ -3,6 +3,7 @@ package com.meshchat.core
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
@@ -53,19 +54,22 @@ class PresenceManager {
             val presence   = json.decodeFromString<PresencePayload>(jsonString)
             val hopDistance = packet.hopCount + 1
 
-            val existing = _peers.value[presence.username]
+            val key = presence.username.lowercase().trim()
+            val existing = _peers.value[key]
             if (existing == null || existing.lastSeen <= presence.timestamp) {
-                _peers.value = _peers.value + (presence.username to PeerInfo(
-                    username        = presence.username,
-                    btNodeId        = presence.btNodeId,
-                    wifiNodeId      = presence.wifiNodeId,
-                    avatarSeed      = presence.avatarSeed,
-                    isOnline        = true,
-                    activeTransport = presence.activeTransport,
-                    hopDistance     = hopDistance,
-                    lastSeen        = presence.timestamp,
-                    usernameClaimed = presence.usernameClaimed,
-                ))
+                _peers.update { current ->
+                    current + (key to PeerInfo(
+                        username        = presence.username,
+                        btNodeId        = presence.btNodeId,
+                        wifiNodeId      = presence.wifiNodeId,
+                        avatarSeed      = presence.avatarSeed,
+                        isOnline        = true,
+                        activeTransport = presence.activeTransport,
+                        hopDistance     = hopDistance,
+                        lastSeen        = presence.timestamp,
+                        usernameClaimed = presence.usernameClaimed,
+                    ))
+                }
             }
         } catch (e: Exception) {
             // Ignore malformed presence packets
@@ -77,19 +81,23 @@ class PresenceManager {
     /** Mark a peer offline by their BT node ID. */
     fun setPeerOffline(btNodeId: String) {
         val entry = _peers.value.entries.firstOrNull { it.value.btNodeId == btNodeId } ?: return
-        _peers.value = _peers.value + (entry.key to entry.value.copy(
-            isOnline = false,
-            lastSeen = System.currentTimeMillis(),
-        ))
+        _peers.update { current ->
+            current + (entry.key to entry.value.copy(
+                isOnline = false,
+                lastSeen = System.currentTimeMillis(),
+            ))
+        }
     }
 
     /** Mark a peer offline by their WiFi node ID. */
     fun setWifiPeerOffline(wifiNodeId: String) {
         val entry = _peers.value.entries.firstOrNull { it.value.wifiNodeId == wifiNodeId } ?: return
-        _peers.value = _peers.value + (entry.key to entry.value.copy(
-            isOnline = false,
-            lastSeen = System.currentTimeMillis(),
-        ))
+        _peers.update { current ->
+            current + (entry.key to entry.value.copy(
+                isOnline = false,
+                lastSeen = System.currentTimeMillis(),
+            ))
+        }
     }
 
     // ── Lookup ─────────────────────────────────────────────────────────────────
